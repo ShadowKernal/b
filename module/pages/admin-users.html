@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UMS - Admin users</title>
+    <link rel="stylesheet" href="/static/app.css" />
+    <script src="/static/app.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <div class="topbar">
+        <div class="brand"><span class="dot"></span><span>UMS Admin</span></div>
+        <div class="nav">
+          <a href="/account">Account</a>
+          <a href="/dev/outbox">Dev outbox</a>
+          <a href="/login" id="logoutLink">Logout</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h1>Users</h1>
+        <div class="row" style="margin-bottom:10px;">
+          <input id="q" placeholder="Search email contains..." />
+          <select id="status">
+            <option value="">All statuses</option>
+            <option value="ACTIVE">ACTIVE</option>
+            <option value="PENDING_VERIFICATION">PENDING_VERIFICATION</option>
+            <option value="DISABLED">DISABLED</option>
+            <option value="DELETED">DELETED</option>
+          </select>
+          <button id="searchBtn" class="btn secondary">Search</button>
+        </div>
+        <div id="statusMsg" class="status" aria-live="polite"></div>
+        <div id="tableWrap" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
+    <script>
+      const logoutLink = document.getElementById('logoutLink');
+      const qEl = document.getElementById('q');
+      const statusEl = document.getElementById('status');
+      const searchBtn = document.getElementById('searchBtn');
+      const msgEl = document.getElementById('statusMsg');
+      const tableWrap = document.getElementById('tableWrap');
+
+      logoutLink.addEventListener('click', async (e) => {
+        e.preventDefault();
+        await UMS.api('/v1/auth/logout', { method: 'POST' });
+        window.location.href = '/login';
+      });
+
+      async function load() {
+        UMS.setStatus(msgEl, 'Loading...', null);
+        const q = qEl.value.trim();
+        const status = statusEl.value;
+        const params = new URLSearchParams();
+        params.set('limit', '50');
+        if (q) params.set('q', q);
+        if (status) params.set('status', status);
+
+        const res = await UMS.api(`/v1/admin/users?${params.toString()}`);
+        if (!res.ok) {
+          const msg = res.data?.error?.message || 'Failed to load';
+          UMS.setStatus(msgEl, msg, 'err');
+          tableWrap.innerHTML = '';
+          if (res.status === 401 || res.status === 403) window.location.href = '/login';
+          return;
+        }
+        UMS.setStatus(msgEl, `Loaded ${res.data.items.length} users`, 'ok');
+        const rows = (res.data.items || []).map(u => {
+          const roles = (u.roles || []).map(r => `<span class="pill">${r}</span>`).join(' ');
+          const actionBtn = u.status === 'DISABLED'
+            ? `<button class="btn ok" data-enable="${u.id}">Enable</button>`
+            : `<button class="btn danger" data-disable="${u.id}">Disable</button>`;
+          return `
+            <tr>
+              <td class="mono">${u.id}</td>
+              <td class="mono">${u.email}</td>
+              <td><span class="pill">${u.status}</span></td>
+              <td>${roles || ''}</td>
+              <td>${UMS.fmtTs(u.createdAt)}</td>
+              <td>${UMS.fmtTs(u.lastLoginAt)}</td>
+              <td class="row" style="justify-content:flex-end;">
+                ${actionBtn}
+                <button class="btn secondary" data-revoke="${u.id}">Revoke sessions</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        tableWrap.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>Email</th><th>Status</th><th>Roles</th><th>Created</th><th>Last login</th><th></th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+
+        for (const btn of tableWrap.querySelectorAll('button[data-disable]')) {
+          btn.addEventListener('click', async () => {
+            const userId = btn.getAttribute('data-disable');
+            const reason = prompt('Reason for disable?') || 'admin action';
+            btn.disabled = true;
+            const r = await UMS.api(`/v1/admin/users/${encodeURIComponent(userId)}/disable`, { method: 'POST', body: { reason } });
+            if (!r.ok) UMS.setStatus(msgEl, r.data?.error?.message || 'Disable failed', 'err');
+            await load();
+          });
+        }
+        for (const btn of tableWrap.querySelectorAll('button[data-enable]')) {
+          btn.addEventListener('click', async () => {
+            const userId = btn.getAttribute('data-enable');
+            btn.disabled = true;
+            const r = await UMS.api(`/v1/admin/users/${encodeURIComponent(userId)}/enable`, { method: 'POST' });
+            if (!r.ok) UMS.setStatus(msgEl, r.data?.error?.message || 'Enable failed', 'err');
+            await load();
+          });
+        }
+        for (const btn of tableWrap.querySelectorAll('button[data-revoke]')) {
+          btn.addEventListener('click', async () => {
+            const userId = btn.getAttribute('data-revoke');
+            btn.disabled = true;
+            const r = await UMS.api(`/v1/admin/users/${encodeURIComponent(userId)}/sessions/revoke`, { method: 'POST' });
+            if (!r.ok) UMS.setStatus(msgEl, r.data?.error?.message || 'Revoke failed', 'err');
+            else UMS.setStatus(msgEl, 'Sessions revoked', 'ok');
+            await load();
+          });
+        }
+      }
+
+      searchBtn.addEventListener('click', load);
+      load();
+    </script>
+  </body>
+</html>
+

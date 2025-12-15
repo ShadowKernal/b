@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UMS - Account</title>
+    <link rel="stylesheet" href="/static/app.css" />
+    <script src="/static/app.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <div class="topbar">
+        <div class="brand"><span class="dot"></span><span>UMS Demo</span></div>
+        <div class="nav">
+          <a href="/dev/outbox">Dev outbox</a>
+          <a href="/admin/users" id="adminLink" style="display:none;">Admin</a>
+          <a href="/login" id="logoutLink">Logout</a>
+        </div>
+      </div>
+
+      <div class="grid cols-2">
+        <div class="card">
+          <h1>Account</h1>
+          <div id="me" class="status">Loading...</div>
+          <div class="row" style="margin-top:10px;">
+            <button class="btn secondary" id="logoutAllBtn">Logout everywhere</button>
+          </div>
+          <div id="status" class="status" style="margin-top:10px;" aria-live="polite"></div>
+        </div>
+
+        <div class="card">
+          <h2>Update profile</h2>
+          <form id="profile-form">
+            <div>
+              <label for="displayName">Display name</label>
+              <input id="displayName" name="displayName" type="text" required />
+            </div>
+            <div class="row">
+              <button class="btn" type="submit">Save</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Change password</h2>
+          <form id="password-form">
+            <div>
+              <label for="currentPassword">Current password</label>
+              <input id="currentPassword" name="currentPassword" type="password" autocomplete="current-password" required />
+            </div>
+            <div class="grid cols-2">
+              <div>
+                <label for="newPassword">New password</label>
+                <input id="newPassword" name="newPassword" type="password" autocomplete="new-password" required />
+              </div>
+              <div>
+                <label for="confirm">Confirm</label>
+                <input id="confirm" name="confirm" type="password" autocomplete="new-password" required />
+              </div>
+            </div>
+            <div class="row">
+              <button class="btn" type="submit">Update password</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Sessions</h2>
+          <div class="muted" style="margin-bottom:10px;">Revoke a session/device.</div>
+          <div id="sessions" class="status">Loading...</div>
+        </div>
+
+        <div class="card">
+          <h2>Delete account</h2>
+          <p>This is a soft delete in the demo.</p>
+          <form id="delete-form">
+            <div>
+              <label for="confirmation">Type DELETE to confirm</label>
+              <input id="confirmation" name="confirmation" type="text" class="mono" required />
+            </div>
+            <div class="row">
+              <button class="btn danger" type="submit">Delete account</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const meEl = document.getElementById('me');
+      const statusEl = document.getElementById('status');
+      const sessionsEl = document.getElementById('sessions');
+      const adminLink = document.getElementById('adminLink');
+      const logoutLink = document.getElementById('logoutLink');
+      const logoutAllBtn = document.getElementById('logoutAllBtn');
+      const profileForm = document.getElementById('profile-form');
+      const passwordForm = document.getElementById('password-form');
+      const deleteForm = document.getElementById('delete-form');
+
+      function renderMe(user) {
+        const roles = (user.roles || []).map(r => `<span class="pill">${r}</span>`).join(' ');
+        meEl.innerHTML = `
+          <div><span class="muted">Email:</span> <span class="mono">${user.email}</span></div>
+          <div><span class="muted">Status:</span> <span class="pill">${user.status}</span></div>
+          <div><span class="muted">Email verified:</span> ${user.emailVerified ? 'Yes' : 'No'}</div>
+          <div><span class="muted">Display name:</span> ${user.profile?.displayName || ''}</div>
+          <div style="margin-top:8px;"><span class="muted">Roles:</span> ${roles || '<span class="muted">none</span>'}</div>
+        `;
+        profileForm.displayName.value = user.profile?.displayName || '';
+        if ((user.roles || []).includes('ADMIN') || (user.roles || []).includes('SUPER_ADMIN')) {
+          adminLink.style.display = '';
+        }
+      }
+
+      async function loadMe() {
+        const res = await UMS.api('/v1/me');
+        if (!res.ok) {
+          window.location.href = '/login';
+          return;
+        }
+        renderMe(res.data.user);
+      }
+
+      async function loadSessions() {
+        const res = await UMS.api('/v1/me/sessions');
+        if (!res.ok) {
+          sessionsEl.textContent = 'Failed to load sessions';
+          return;
+        }
+        const items = res.data.items || [];
+        if (!items.length) {
+          sessionsEl.textContent = 'No sessions';
+          return;
+        }
+        const rows = items.map(s => `
+          <tr>
+            <td class="mono">${s.id}</td>
+            <td>${UMS.fmtTs(s.createdAt)}</td>
+            <td>${UMS.fmtTs(s.lastSeenAt)}</td>
+            <td class="mono">${s.ip || ''}</td>
+            <td class="mono">${(s.userAgent || '').slice(0, 60)}</td>
+            <td><button class="btn secondary" data-session-id="${s.id}">Revoke</button></td>
+          </tr>
+        `).join('');
+        sessionsEl.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>Created</th><th>Last seen</th><th>IP</th><th>User agent</th><th></th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+
+        for (const btn of sessionsEl.querySelectorAll('button[data-session-id]')) {
+          btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            const sessionId = btn.getAttribute('data-session-id');
+            const del = await UMS.api(`/v1/me/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+            if (!del.ok) {
+              UMS.setStatus(statusEl, del.data?.error?.message || 'Failed to revoke session', 'err');
+              btn.disabled = false;
+              return;
+            }
+            UMS.setStatus(statusEl, 'Session revoked', 'ok');
+            await loadSessions();
+          });
+        }
+      }
+
+      logoutLink.addEventListener('click', async (e) => {
+        e.preventDefault();
+        await UMS.api('/v1/auth/logout', { method: 'POST' });
+        window.location.href = '/login';
+      });
+
+      logoutAllBtn.addEventListener('click', async () => {
+        logoutAllBtn.disabled = true;
+        const res = await UMS.api('/v1/auth/logout-all', { method: 'POST' });
+        if (!res.ok) {
+          UMS.setStatus(statusEl, res.data?.error?.message || 'Failed to logout everywhere', 'err');
+          logoutAllBtn.disabled = false;
+          return;
+        }
+        window.location.href = '/login';
+      });
+
+      profileForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        UMS.setStatus(statusEl, 'Saving...', null);
+        const displayName = profileForm.displayName.value.trim();
+        const res = await UMS.api('/v1/me', { method: 'PATCH', body: { profile: { displayName } } });
+        if (!res.ok) {
+          UMS.setStatus(statusEl, res.data?.error?.message || 'Failed to save', 'err');
+          return;
+        }
+        UMS.setStatus(statusEl, 'Saved', 'ok');
+        renderMe(res.data.user);
+      });
+
+      passwordForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        UMS.setStatus(statusEl, 'Updating password...', null);
+        const currentPassword = passwordForm.currentPassword.value;
+        const newPassword = passwordForm.newPassword.value;
+        const confirm = passwordForm.confirm.value;
+        if (newPassword !== confirm) {
+          UMS.setStatus(statusEl, 'Passwords do not match', 'err');
+          return;
+        }
+        const res = await UMS.api('/v1/me/password', {
+          method: 'POST',
+          body: { currentPassword, newPassword }
+        });
+        if (!res.ok) {
+          UMS.setStatus(statusEl, res.data?.error?.message || 'Failed to update password', 'err');
+          return;
+        }
+        UMS.setStatus(statusEl, 'Password updated (other sessions revoked)', 'ok');
+        passwordForm.reset();
+        await loadSessions();
+      });
+
+      deleteForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        UMS.setStatus(statusEl, 'Deleting account...', null);
+        const confirmation = deleteForm.confirmation.value.trim();
+        const res = await UMS.api('/v1/me/delete', { method: 'POST', body: { confirmation } });
+        if (!res.ok) {
+          UMS.setStatus(statusEl, res.data?.error?.message || 'Delete failed', 'err');
+          return;
+        }
+        window.location.href = '/login';
+      });
+
+      loadMe();
+      loadSessions();
+    </script>
+  </body>
+</html>
+

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UMS - Verify email</title>
+    <link rel="stylesheet" href="/static/app.css" />
+    <script src="/static/app.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <div class="topbar">
+        <div class="brand"><span class="dot"></span><span>UMS Demo</span></div>
+        <div class="nav">
+          <a href="/login">Login</a>
+          <a href="/dev/outbox">Dev outbox</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h1>Verify email</h1>
+        <p>Paste the verification code (token) from the dev outbox.</p>
+        <form id="verify-form">
+          <div>
+            <label for="token">Verification code</label>
+            <input id="token" name="token" type="text" class="mono" required />
+          </div>
+          <div class="row">
+            <button class="btn" type="submit">Verify</button>
+            <a class="btn secondary" href="/login">Back to login</a>
+          </div>
+        </form>
+        <div id="status" class="status" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <script>
+      const form = document.getElementById('verify-form');
+      const statusEl = document.getElementById('status');
+      const tokenInput = document.getElementById('token');
+
+      const tokenFromUrl = UMS.qs('token');
+      if (tokenFromUrl) tokenInput.value = tokenFromUrl;
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        UMS.setStatus(statusEl, 'Verifying...', null);
+        const token = form.token.value.trim();
+        const res = await UMS.api('/v1/auth/verify-email', {
+          method: 'POST',
+          body: { token }
+        });
+        if (!res.ok) {
+          const msg = res.data?.error?.message || 'Verification failed';
+          UMS.setStatus(statusEl, msg, 'err');
+          return;
+        }
+        UMS.setStatus(statusEl, 'Email verified. You can log in now.', 'ok');
+      });
+    </script>
+  </body>
+</html>
+

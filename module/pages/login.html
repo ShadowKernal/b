@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UMS - Login</title>
+    <link rel="stylesheet" href="/static/app.css" />
+    <script src="/static/app.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <div class="topbar">
+        <div class="brand"><span class="dot"></span><span>UMS Demo</span></div>
+        <div class="nav">
+          <a href="/signup">Sign up</a>
+          <a href="/forgot-password">Forgot password</a>
+          <a href="/dev/outbox">Dev outbox</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h1>Login</h1>
+        <p>Use your email + password. If you just signed up, verify your email from the dev outbox.</p>
+        <form id="login-form">
+          <div>
+            <label for="identifier">Email</label>
+            <input id="identifier" name="identifier" type="email" autocomplete="email" required />
+          </div>
+          <div>
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required />
+          </div>
+          <div class="row">
+            <label class="row" style="gap:8px;">
+              <input id="rememberMe" name="rememberMe" type="checkbox" />
+              <span>Remember me</span>
+            </label>
+          </div>
+          <div class="row">
+            <button class="btn" type="submit">Login</button>
+            <a class="btn secondary" href="/signup">Create account</a>
+          </div>
+        </form>
+        <div id="status" class="status" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <script>
+      const form = document.getElementById('login-form');
+      const statusEl = document.getElementById('status');
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        UMS.setStatus(statusEl, 'Logging in...', null);
+        const identifier = form.identifier.value.trim();
+        const password = form.password.value;
+        const rememberMe = !!form.rememberMe.checked;
+
+        const res = await UMS.api('/v1/auth/login', {
+          method: 'POST',
+          body: { identifier, password, rememberMe }
+        });
+
+        if (!res.ok) {
+          const msg = res.data?.error?.message || 'Login failed';
+          UMS.setStatus(statusEl, msg, 'err');
+          return;
+        }
+        UMS.setStatus(statusEl, 'Logged in. Redirecting...', 'ok');
+        window.location.href = '/account';
+      });
+    </script>
+  </body>
+</html>
+

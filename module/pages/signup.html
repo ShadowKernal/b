@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UMS - Sign up</title>
+    <link rel="stylesheet" href="/static/app.css" />
+    <script src="/static/app.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <div class="topbar">
+        <div class="brand"><span class="dot"></span><span>UMS Demo</span></div>
+        <div class="nav">
+          <a href="/login">Login</a>
+          <a href="/dev/outbox">Dev outbox</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h1>Create account</h1>
+        <p>After sign-up, a verification code is sent to the dev outbox.</p>
+        <form id="signup-form">
+          <div>
+            <label for="displayName">Display name</label>
+            <input id="displayName" name="displayName" type="text" autocomplete="nickname" required />
+          </div>
+          <div>
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" autocomplete="email" required />
+          </div>
+          <div class="grid cols-2">
+            <div>
+              <label for="password">Password</label>
+              <input id="password" name="password" type="password" autocomplete="new-password" required />
+            </div>
+            <div>
+              <label for="confirm">Confirm</label>
+              <input id="confirm" name="confirm" type="password" autocomplete="new-password" required />
+            </div>
+          </div>
+          <div class="row">
+            <button class="btn" type="submit">Sign up</button>
+            <a class="btn secondary" href="/login">Back to login</a>
+          </div>
+        </form>
+        <div id="status" class="status" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <script>
+      const form = document.getElementById('signup-form');
+      const statusEl = document.getElementById('status');
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        UMS.setStatus(statusEl, 'Creating account...', null);
+
+        const displayName = form.displayName.value.trim();
+        const email = form.email.value.trim();
+        const password = form.password.value;
+        const confirm = form.confirm.value;
+
+        if (password !== confirm) {
+          UMS.setStatus(statusEl, 'Passwords do not match', 'err');
+          return;
+        }
+
+        const res = await UMS.api('/v1/auth/signup', {
+          method: 'POST',
+          body: {
+            email,
+            password,
+            profile: { displayName },
+            consents: { termsVersion: 'demo', privacyVersion: 'demo' }
+          }
+        });
+
+        if (!res.ok) {
+          const msg = res.data?.error?.message || 'Sign-up failed';
+          UMS.setStatus(statusEl, msg, 'err');
+          return;
+        }
+
+        UMS.setStatus(
+          statusEl,
+          'Sign-up complete. Open the dev outbox to copy your verification code/link.',
+          'ok'
+        );
+      });
+    </script>
+  </body>
+</html>
+

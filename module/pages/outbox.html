@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UMS - Dev outbox</title>
+    <link rel="stylesheet" href="/static/app.css" />
+    <script src="/static/app.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <div class="topbar">
+        <div class="brand"><span class="dot"></span><span>UMS Dev Outbox</span></div>
+        <div class="nav">
+          <a href="/login">Login</a>
+          <a href="/signup">Sign up</a>
+          <a href="/forgot-password">Forgot password</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h1>Dev outbox</h1>
+        <p>This demo writes "sent emails" here so you can copy verification/reset codes.</p>
+        <div class="row" style="margin-bottom:10px;">
+          <button id="refreshBtn" class="btn secondary">Refresh</button>
+        </div>
+        <div id="status" class="status" aria-live="polite"></div>
+        <div id="items" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
+    <script>
+      const statusEl = document.getElementById('status');
+      const itemsEl = document.getElementById('items');
+      const refreshBtn = document.getElementById('refreshBtn');
+
+      function render(items) {
+        if (!items.length) {
+          itemsEl.innerHTML = '<div class="muted">No messages yet</div>';
+          return;
+        }
+        itemsEl.innerHTML = items.map(m => `
+          <div class="card" style="margin-top:12px;">
+            <div class="row" style="justify-content:space-between;">
+              <div><span class="muted">To:</span> <span class="mono">${m.to}</span></div>
+              <div class="muted">${UMS.fmtTs(m.createdAt)}</div>
+            </div>
+            <div style="margin-top:6px;"><span class="muted">Subject:</span> ${m.subject}</div>
+            <div class="code" style="margin-top:10px;">${m.body}</div>
+          </div>
+        `).join('');
+      }
+
+      async function load() {
+        UMS.setStatus(statusEl, 'Loading...', null);
+        const res = await UMS.api('/v1/dev/outbox?limit=20');
+        if (!res.ok) {
+          UMS.setStatus(statusEl, res.data?.error?.message || 'Failed to load outbox', 'err');
+          itemsEl.innerHTML = '';
+          return;
+        }
+        UMS.setStatus(statusEl, `Loaded ${res.data.items.length} messages`, 'ok');
+        render(res.data.items);
+      }
+
+      refreshBtn.addEventListener('click', load);
+      load();
+    </script>
+  </body>
+</html>
+
